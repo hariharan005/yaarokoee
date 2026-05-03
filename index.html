@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Video Chat Demo</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #0f172a;
+  color: white;
+  text-align: center;
+}
+
+video {
+  width: 45%;
+  margin: 10px;
+  border-radius: 10px;
+  border: 2px solid #38bdf8;
+}
+
+.controls {
+  margin-top: 20px;
+}
+
+button {
+  margin: 5px;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 6px;
+  background: #38bdf8;
+  cursor: pointer;
+}
+
+canvas {
+  display: none;
+}
+</style>
+</head>
+
+<body>
+
+<h2>🎥 WebRTC Video Demo</h2>
+
+<video id="localVideo" autoplay playsinline muted></video>
+<video id="remoteVideo" autoplay playsinline></video>
+
+<div class="controls">
+  <button onclick="start()">Start Camera</button>
+  <button onclick="toggleAudio()">🔊 Mute/Unmute</button>
+  <button onclick="capture()">📸 Capture</button>
+  <button onclick="switchCamera()">🔁 Switch Camera</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+let localStream;
+let currentFacingMode = "user"; // front camera
+
+let pc = new RTCPeerConnection();
+
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
+
+async function start() {
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: currentFacingMode },
+    audio: true
+  });
+
+  localVideo.srcObject = localStream;
+
+  // Add tracks to peer connection
+  localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+  pc.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
+
+  // Local WebRTC loopback (demo)
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  const pc2 = new RTCPeerConnection();
+
+  pc2.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
+
+  pc2.onicecandidate = e => e.candidate && pc.addIceCandidate(e.candidate);
+  pc.onicecandidate = e => e.candidate && pc2.addIceCandidate(e.candidate);
+
+  await pc2.setRemoteDescription(offer);
+  const answer = await pc2.createAnswer();
+  await pc2.setLocalDescription(answer);
+  await pc.setRemoteDescription(answer);
+}
+
+// 🔊 Mute / Unmute
+function toggleAudio() {
+  localStream.getAudioTracks().forEach(track => {
+    track.enabled = !track.enabled;
+  });
+}
+
+// 📸 Capture Snapshot
+function capture() {
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  canvas.width = localVideo.videoWidth;
+  canvas.height = localVideo.videoHeight;
+
+  ctx.drawImage(localVideo, 0, 0);
+
+  const image = canvas.toDataURL("image/png");
+
+  const link = document.createElement("a");
+  link.href = image;
+  link.download = "snapshot.png";
+  link.click();
+}
+
+// 🔁 Switch Camera (Mobile)
+async function switchCamera() {
+  currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+  }
+
+  await start();
+}
+</script>
+
+</body>
+</html>
